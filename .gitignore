@@ -13,3 +13,13 @@ node_modules/
 .ssh/
 .wget-hsts
 package-lock.json
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+credentials/
+*.log
