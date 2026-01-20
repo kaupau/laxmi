@@ -357,6 +357,7 @@ monitor.registerWebhook({
 - **[API.md](./API.md)** - Complete API reference with input/output specs
 - **[EXTENSIONS.md](./EXTENSIONS.md)** - Advanced patterns, integrations, and workflows
 - **[TRADING.md](./TRADING.md)** - 🆕 Trading bot guide, wallet management, and strategies
+- **[AGENTS.md](./AGENTS.md)** - 🤖 AI agent integration guide (also: [CLAUDE.md](./CLAUDE.md))
 - **[examples/](./examples/)** - Working code examples
 
 ## Use Cases
