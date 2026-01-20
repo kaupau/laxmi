@@ -6,6 +6,7 @@ node_modules/
 .claude.json
 .claude.json.backup
 .bashrc
+.bash_history
 .profile
 .cloud-locale-test.skip
 .gitconfig

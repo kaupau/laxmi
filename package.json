@@ -6,7 +6,12 @@
   "type": "module",
   "scripts": {
     "test": "node --test src/tracker.test.js",
-    "start": "node src/example.js"
+    "start": "node src/example.js",
+    "demo": "node demo.js",
+    "quick-test": "node examples/quick-test.js",
+    "detailed-tx": "node examples/detailed-transactions.js",
+    "monitor": "node examples/monitor-wallets.js",
+    "webhooks": "node examples/webhook-demo.js"
   },
   "keywords": ["solana", "wallet", "tracker"],
   "author": "kaupau",
