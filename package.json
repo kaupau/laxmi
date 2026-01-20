@@ -11,12 +11,15 @@
     "quick-test": "node examples/quick-test.js",
     "detailed-tx": "node examples/detailed-transactions.js",
     "monitor": "node examples/monitor-wallets.js",
-    "webhooks": "node examples/webhook-demo.js"
+    "webhooks": "node examples/webhook-demo.js",
+    "wallet-setup": "node examples/wallet-setup.js",
+    "copy-trading": "node examples/copy-trading-bot.js"
   },
   "keywords": ["solana", "wallet", "tracker"],
   "author": "kaupau",
   "license": "MIT",
   "dependencies": {
-    "@solana/web3.js": "^1.95.8"
+    "@solana/web3.js": "^1.95.8",
+    "bs58": "^5.0.0"
   }
 }

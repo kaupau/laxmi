@@ -1,5 +1,5 @@
 # laxmi
-Solana Wallet Tracker - Real-time monitoring, alerts, and transaction analysis
+Solana Wallet Tracker - Real-time monitoring, alerts, transaction analysis, and automated trading
 
 ## Features
 
@@ -23,6 +23,16 @@ Solana Wallet Tracker - Real-time monitoring, alerts, and transaction analysis
 - 📈 Account-level balance tracking
 - ⚡ Transaction success/failure status
 - 🔗 Pre/post balance analysis
+
+### 🤖 Automated Trading (NEW!)
+- 💼 Wallet creation and management
+- 📤 Send SOL transactions
+- 🔄 Copy trading bot framework
+- 🐋 Whale follower strategies
+- 🎯 Token sniping capabilities
+- 🧪 Dry-run mode for safe testing
+- ⚡ Event-driven trading triggers
+- 📊 Trading statistics and history
 
 ## Installation
 
@@ -72,6 +82,8 @@ npm run demo              # Live wallet data demo
 npm run detailed-tx       # Detailed transaction parsing
 npm run monitor           # Real-time wallet monitoring
 npm run webhooks          # Webhook integration demo
+npm run wallet-setup      # 🆕 Create/manage wallets
+npm run copy-trading      # 🆕 Copy trading bot (dry-run)
 ```
 
 ## Quick Start Examples
@@ -129,6 +141,71 @@ console.log(`Fee: ${details.fee} SOL`);
 console.log(`SOL Changes:`, details.balanceChanges);
 console.log(`Token Transfers:`, details.tokenTransfers);
 ```
+
+### 5. Automated Trading
+
+```javascript
+import { WalletManager } from './src/wallet.js';
+import { TradingBot, TradingStrategies } from './src/trading-bot.js';
+
+// Create or load wallet
+const walletManager = new WalletManager();
+walletManager.loadWallet(process.env.WALLET_PRIVATE_KEY);
+
+// Create trading bot
+const bot = new TradingBot(tracker, walletManager, {
+  enabled: false,        // Start paused
+  dryRun: true,         // Simulate trades
+  maxTradeAmount: 0.1,  // Max 0.1 SOL per trade
+  copyRatio: 0.1        // Copy 10% of whale trades
+});
+
+// Register copy trading strategy
+bot.registerStrategy('copy-whale',
+  TradingStrategies.copyTrading('whale', {
+    minAmount: 1  // Only copy trades >= 1 SOL
+  })
+);
+
+await bot.start();
+```
+
+**⚠️ Trading Warnings:**
+- Start with dry-run mode (simulated trades)
+- Test on devnet before mainnet
+- Use small amounts
+- Trading involves financial risk
+- See [TRADING.md](./TRADING.md) for complete guide
+
+## Trading Features
+
+### Wallet Management
+
+```bash
+# Create a new wallet
+npm run wallet-setup
+
+# Save your private key to .env
+echo "WALLET_PRIVATE_KEY=your_key_here" >> .env
+```
+
+### Copy Trading Bot
+
+```bash
+# Run in dry-run mode (simulated)
+npm run copy-trading
+
+# Bot will monitor and simulate trades based on tracked wallets
+```
+
+### Trading Strategies
+
+- **Copy Trading**: Mirror trades from whale wallets
+- **Whale Follower**: Trade when large transactions occur
+- **Token Sniper**: Buy tokens when tracked wallets buy them
+- **Custom Strategies**: Build your own trading logic
+
+See [TRADING.md](./TRADING.md) for detailed documentation and examples.
 
 ## API Reference
 
@@ -279,6 +356,7 @@ monitor.registerWebhook({
 
 - **[API.md](./API.md)** - Complete API reference with input/output specs
 - **[EXTENSIONS.md](./EXTENSIONS.md)** - Advanced patterns, integrations, and workflows
+- **[TRADING.md](./TRADING.md)** - 🆕 Trading bot guide, wallet management, and strategies
 - **[examples/](./examples/)** - Working code examples
 
 ## Use Cases
