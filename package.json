@@ -13,7 +13,11 @@
     "monitor": "node examples/monitor-wallets.js",
     "webhooks": "node examples/webhook-demo.js",
     "wallet-setup": "node examples/wallet-setup.js",
-    "copy-trading": "node examples/copy-trading-bot.js"
+    "copy-trading": "node examples/copy-trading-bot.js",
+    "bot-start": "./bot-manager.sh start",
+    "bot-stop": "./bot-manager.sh stop",
+    "bot-status": "./bot-manager.sh status",
+    "bot-logs": "./bot-manager.sh logs"
   },
   "keywords": ["solana", "wallet", "tracker"],
   "author": "kaupau",

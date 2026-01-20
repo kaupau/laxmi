@@ -21,9 +21,9 @@ async function main() {
 
   // Configuration
   const CONFIG = {
-    network: 'devnet',  // Use 'mainnet-beta' for real trading (RISKY!)
+    network: 'mainnet-beta',  // Use mainnet to track real wallets (dry-run safe!)
     dryRun: true,       // Set to false for real trades (START WITH true!)
-    enabled: false,     // Bot will not execute trades (set true when ready)
+    enabled: true,      // Enable for dry-run testing (simulates only)
 
     // Trading parameters
     maxTradeAmount: 0.1,      // Maximum SOL per trade
