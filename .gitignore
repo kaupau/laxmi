@@ -1,0 +1,14 @@
+node_modules/
+.cache/
+.config/
+.npm/
+.claude/
+.claude.json
+.claude.json.backup
+.bashrc
+.profile
+.cloud-locale-test.skip
+.gitconfig
+.ssh/
+.wget-hsts
+package-lock.json

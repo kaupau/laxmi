@@ -1,0 +1,17 @@
+{
+  "name": "laxmi-wallet-tracker",
+  "version": "1.0.0",
+  "description": "Simple Solana wallet tracker utility",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/tracker.test.js",
+    "start": "node src/example.js"
+  },
+  "keywords": ["solana", "wallet", "tracker"],
+  "author": "kaupau",
+  "license": "MIT",
+  "dependencies": {
+    "@solana/web3.js": "^1.95.8"
+  }
+}
