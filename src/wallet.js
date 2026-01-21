@@ -1,6 +1,6 @@
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, sendAndConfirmTransaction } from '@solana/web3.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import * as bs58 from 'bs58';
+import bs58 from 'bs58';
 
 /**
  * WalletManager - Create and manage Solana wallets for trading

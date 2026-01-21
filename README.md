@@ -14,6 +14,7 @@ Solana Wallet Tracker - Real-time monitoring, alerts, transaction analysis, and 
 - 🔔 Real-time wallet monitoring with configurable polling
 - 🚨 Alert system for transaction events
 - 📮 Webhook support (Discord, Telegram, Slack, custom)
+- 📱 Telegram alert bot with instant notifications
 - 🎯 Custom alert filters and rules
 - 📊 Balance change tracking
 
@@ -33,6 +34,16 @@ Solana Wallet Tracker - Real-time monitoring, alerts, transaction analysis, and 
 - 🧪 Dry-run mode for safe testing
 - ⚡ Event-driven trading triggers
 - 📊 Trading statistics and history
+
+### 🚀 Pigeon.trade Integration (NEW!)
+- 📊 **Full Token Portfolio Tracking** - Track all SPL tokens with real USD values (not just SOL)
+- 💰 **PnL Calculations** - Analyze realized profit/loss for each token across all trades
+- 🐋 **Whale Detection** - Identify concentrated tokens and whale holder statistics
+- 📈 **Market Intelligence** - Discover trending tokens before they pump
+- 🧠 **Sentiment Analysis** - Track social sentiment and news mentions
+- 🤖 **Jupiter Integration** - Execute swaps and manage limit orders
+- 🎯 **Smart Alerts** - Get notified when whales buy trending tokens
+- 💸 **Budget Management** - Control API costs with built-in spending limits
 
 ## Installation
 
@@ -82,8 +93,21 @@ npm run demo              # Live wallet data demo
 npm run detailed-tx       # Detailed transaction parsing
 npm run monitor           # Real-time wallet monitoring
 npm run webhooks          # Webhook integration demo
+npm run telegram-bot      # 🆕 Telegram alert bot
 npm run wallet-setup      # 🆕 Create/manage wallets
 npm run copy-trading      # 🆕 Copy trading bot (dry-run)
+```
+
+### Pigeon Integration (Enhanced Features)
+
+```bash
+# 1. Get Pigeon API key from https://pigeon.trade
+# 2. Set environment variable
+export PIGEON_API_KEY=your_key_here
+
+# 3. Run enhanced demos
+node examples/pigeon-demo.js      # Full portfolio & PnL tracking
+node examples/ai-agent.js         # AI-powered wallet analysis
 ```
 
 ## Quick Start Examples
@@ -176,6 +200,45 @@ await bot.start();
 - Use small amounts
 - Trading involves financial risk
 - See [TRADING.md](./TRADING.md) for complete guide
+
+### 6. Enhanced Portfolio with Pigeon Integration
+
+```javascript
+import { EnhancedWalletTracker } from './src/enhanced-tracker.js';
+
+const tracker = new EnhancedWalletTracker(
+  process.env.RPC_URL,
+  process.env.PIGEON_API_KEY,
+  {
+    pigeonOptions: {
+      dailyBudget: 1.00,  // $1/day API budget
+      cacheTimeout: 300000 // 5 min cache
+    }
+  }
+);
+
+tracker.loadWallets();
+
+// Get full token portfolio (not just SOL)
+const portfolio = await tracker.getTokenPortfolio('whale');
+console.log(`Total Value: $${portfolio.totalUsdValue.toFixed(2)}`);
+console.log(`Tokens: ${portfolio.tokens.length}`);
+
+// Calculate realized PnL
+const pnl = await tracker.getCompletePnL('whale');
+console.log(`Total PnL: ${pnl.totalRealizedPnL.toFixed(4)} SOL`);
+console.log(`Win Rate: ${pnl.winRate.toFixed(1)}%`);
+
+// Discover trending tokens
+const trending = await tracker.discoverTrendingTokens('solana', 10);
+console.log('Top trending:', trending.map(t => t.symbol));
+
+// Detect smart money moves
+const smartMoves = await tracker.detectTrendingPurchases('whale');
+console.log(`Trending purchases: ${smartMoves.count}`);
+```
+
+**See [PIGEON_INTEGRATION.md](./PIGEON_INTEGRATION.md) for complete integration guide**
 
 ## Trading Features
 
@@ -352,11 +415,62 @@ monitor.registerWebhook({
 }
 ```
 
+### Telegram Alert Bot
+
+Get instant Telegram notifications when your tracked wallets have activity.
+
+#### Quick Setup
+
+1. **Create a Telegram bot:**
+   - Message @BotFather on Telegram
+   - Send `/newbot` and follow the prompts
+   - Save the bot token
+
+2. **Get your Chat ID:**
+   - Message @userinfobot on Telegram
+   - Save your user ID
+
+3. **Configure `.env`:**
+   ```bash
+   TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+   TELEGRAM_CHAT_ID=123456789
+   TELEGRAM_OWNER_ID=123456789
+   ```
+
+4. **Start the bot:**
+   ```bash
+   npm run telegram-bot
+   ```
+
+5. **Activate in Telegram:**
+   - Send `/start` to your bot
+   - You'll now receive real-time alerts!
+
+#### Alert Types
+
+- 🚨 Large transactions (>10 SOL)
+- 💰 Incoming transactions
+- 📤 Outgoing transactions
+- 🪙 Token transfers
+- 📊 Balance changes
+
+#### Bot Commands
+
+- `/start` - Activate alerts
+- `/status` - View monitoring status
+- `/wallets` - List tracked wallets
+- `/stats` - Show statistics
+- `/help` - Command list
+
+**See [TELEGRAM_BOT.md](./TELEGRAM_BOT.md) for complete setup guide and customization options.**
+
 ## Documentation
 
 - **[API.md](./API.md)** - Complete API reference with input/output specs
+- **[PIGEON_INTEGRATION.md](./PIGEON_INTEGRATION.md)** - 🚀 Pigeon.trade integration guide for enhanced features
 - **[EXTENSIONS.md](./EXTENSIONS.md)** - Advanced patterns, integrations, and workflows
 - **[TRADING.md](./TRADING.md)** - 🆕 Trading bot guide, wallet management, and strategies
+- **[TELEGRAM_BOT.md](./TELEGRAM_BOT.md)** - 🆕 Telegram alert bot setup and customization
 - **[AGENTS.md](./AGENTS.md)** - 🤖 AI agent integration guide (also: [CLAUDE.md](./CLAUDE.md))
 - **[examples/](./examples/)** - Working code examples
 
@@ -395,11 +509,20 @@ laxmi/
 # Optional: Premium RPC for better performance
 SOLANA_RPC_URL=https://your-premium-rpc.com
 
+# Optional: Pigeon.trade API for enhanced features
+PIGEON_API_KEY=your_pigeon_api_key
+
+# Optional: Anthropic API for AI agents
+ANTHROPIC_API_KEY=your_anthropic_api_key
+
 # Optional: Webhook URLs
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# Optional: Telegram Bot
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+TELEGRAM_OWNER_ID=your_owner_id
 CUSTOM_WEBHOOK_URL=https://your-server.com/webhook
 WEBHOOK_TOKEN=your_secret_token
 ```

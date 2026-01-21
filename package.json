@@ -12,6 +12,7 @@
     "detailed-tx": "node examples/detailed-transactions.js",
     "monitor": "node examples/monitor-wallets.js",
     "webhooks": "node examples/webhook-demo.js",
+    "telegram-bot": "node telegram-bot.js",
     "wallet-setup": "node examples/wallet-setup.js",
     "copy-trading": "node examples/copy-trading-bot.js",
     "bot-start": "./bot-manager.sh start",
@@ -19,11 +20,18 @@
     "bot-status": "./bot-manager.sh status",
     "bot-logs": "./bot-manager.sh logs"
   },
-  "keywords": ["solana", "wallet", "tracker"],
+  "keywords": [
+    "solana",
+    "wallet",
+    "tracker"
+  ],
   "author": "kaupau",
   "license": "MIT",
   "dependencies": {
     "@solana/web3.js": "^1.95.8",
-    "bs58": "^5.0.0"
+    "bs58": "^5.0.0",
+    "dotenv": "^17.2.3",
+    "node-telegram-bot-api": "^0.67.0",
+    "openai": "^6.16.0"
   }
 }
