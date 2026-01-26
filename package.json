@@ -13,7 +13,6 @@
     "test:paper": "node tests/paper-trading.test.js",
     "test:analyzer": "node tests/token-analyzer.test.js",
     "start": "node src/example.js",
-    "demo": "node demo.js",
     "quick-test": "node examples/quick-test.js",
     "detailed-tx": "node examples/detailed-transactions.js",
     "monitor": "node examples/monitor-wallets.js",

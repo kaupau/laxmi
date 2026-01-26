@@ -1164,24 +1164,26 @@ Use \`/reset\` to get more paper money.`, { parse_mode: 'Markdown' });
       try {
         if (paperTrading.isEnabled()) {
           // ===== PAPER TRADING EXECUTION =====
+
+          // Get token analysis for price and symbol
+          const analysis = await tokenAnalyzer.getTokenMetadata(tokenToBuy.mint);
+          const pricePerToken = analysis?.price || 0.0001; // Fallback price
+          const tokenSymbol = analysis?.symbol || tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8) + '...';
+
           await bot.sendMessage(msg.chat.id, `
 🧪 *Executing Paper Trade*
 
 *Spending:* ${amount} SOL
-*Token:* ${tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8) + '...'}
+*Token:* ${tokenSymbol}
 *Mode:* Paper Trading (Simulated)
 
 Simulating trade...
           `.trim(), { parse_mode: 'Markdown' });
 
-          // Get token analysis for price estimation
-          const analysis = await tokenAnalyzer.getTokenMetadata(tokenToBuy.mint);
-          const pricePerToken = analysis?.price || 0.0001; // Fallback price
-
           // Execute paper trade
           const result = await paperTrading.buy(
             tokenToBuy.mint,
-            tokenToBuy.symbol || 'UNKNOWN',
+            tokenSymbol,
             amount,
             pricePerToken
           );
@@ -1190,13 +1192,13 @@ Simulating trade...
 ✅ *Paper Trade Executed!*
 
 *Input:* ${amount} SOL
-*Output:* ${result.trade.tokensReceived.toLocaleString()} ${tokenToBuy.symbol || 'tokens'}
+*Output:* ${result.trade.tokensReceived.toLocaleString()} ${tokenSymbol}
 *Price:* $${pricePerToken.toFixed(8)} per token
 
 📊 *Your Paper Portfolio:*
 • SOL Balance: ${result.portfolio.balance.toFixed(4)} SOL
 • Total Trades: ${result.portfolio.stats.totalTrades}
-• ${tokenToBuy.symbol || 'Token'}: ${result.portfolio.tokens[tokenToBuy.mint].amount.toLocaleString()} tokens
+• ${tokenSymbol}: ${result.portfolio.tokens[tokenToBuy.mint].amount.toLocaleString()} tokens
 
 *Original Alert TX:* [View](https://solscan.io/tx/${txDetails.signature})
 
@@ -1211,11 +1213,16 @@ Use \`/mode\` to switch to real trading.
 
         } else {
           // ===== REAL TRADING EXECUTION =====
+
+          // Get token analysis for symbol
+          const analysis = await tokenAnalyzer.getTokenMetadata(tokenToBuy.mint);
+          const tokenSymbol = analysis?.symbol || tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8) + '...';
+
           await bot.sendMessage(msg.chat.id, `
 ⏳ *Executing Real Swap via Jupiter*
 
 *Spending:* ${amount} SOL
-*Token:* ${tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8) + '...'}
+*Token:* ${tokenSymbol}
 *Slippage:* 1%
 
 Getting best price across all DEXs...
@@ -1229,7 +1236,7 @@ Getting best price across all DEXs...
 ✅ *Swap Successful!*
 
 *Input:* ${amount} SOL
-*Output:* ~${(swapResult.outputAmount / 1e9).toFixed(4)} ${tokenToBuy.symbol || 'tokens'}
+*Output:* ~${(swapResult.outputAmount / 1e9).toFixed(4)} ${tokenSymbol}
 *Price Impact:* ${swapResult.priceImpact}%
 
 *Swap TX:* [View on Solscan](https://solscan.io/tx/${swapResult.signature})
