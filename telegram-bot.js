@@ -14,6 +14,10 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { WalletTracker } from './src/tracker.js';
 import { WalletMonitor, AlertType } from './src/alerts.js';
 import { WalletManager } from './src/wallet.js';
+import { JupiterTrader } from './src/jupiter-trader.js';
+import { TokenAnalyzer } from './src/token-analyzer.js';
+import { TradeThesisAgent } from './src/trade-thesis-agent.js';
+import { PaperTrading } from './src/paper-trading.js';
 
 // Load environment variables
 dotenv.config();
@@ -66,6 +70,16 @@ if (process.env.BOT_WALLET_PRIVATE_KEY) {
   }
 }
 
+// Initialize Jupiter trader for swaps
+const jupiterTrader = new JupiterTrader(botWallet, RPC_URL);
+
+// Initialize token analyzer and AI thesis agent
+const tokenAnalyzer = new TokenAnalyzer(RPC_URL, tracker.wallets);
+const thesisAgent = new TradeThesisAgent(process.env.ANTHROPIC_API_KEY);
+
+// Initialize paper trading
+const paperTrading = new PaperTrading('./paper-trades.json');
+
 // Bot state
 let alertChatId = CHAT_ID;
 let alertsMuted = false;
@@ -108,19 +122,48 @@ bot.on('message', (msg) => {
 
 // ===== COMMAND HANDLERS =====
 
+// Log ALL messages received (for debugging)
+bot.on('message', (msg) => {
+  console.log(`📥 Message received: "${msg.text}" from user ${msg.from.id} (${msg.from.username || msg.from.first_name}) in chat ${msg.chat.id} (${msg.chat.type})`);
+});
+
 /**
  * /start - Welcome message and setup
  */
 bot.onText(/\/start/, async (msg) => {
-  if (!isOwner(msg.from.id)) return;
+  console.log(`📨 /start received from user ID: ${msg.from.id}, chat ID: ${msg.chat.id}, username: ${msg.from.username || msg.from.first_name}`);
+
+  if (!isOwner(msg.from.id)) {
+    console.log(`❌ Unauthorized user: ${msg.from.id}`);
+    bot.sendMessage(msg.chat.id, '⛔ You are not authorized to use this bot.');
+    return;
+  }
 
   stats.commandsReceived++;
   const chatId = msg.chat.id;
 
-  // Save chat ID for alerts
-  if (!alertChatId) {
-    alertChatId = chatId.toString();
-    console.log(`✅ Alert chat ID set to: ${chatId}`);
+  // Always update chat ID for alerts (handles group upgrades)
+  const oldChatId = alertChatId;
+  alertChatId = chatId.toString();
+
+  if (oldChatId !== alertChatId) {
+    console.log(`✅ Alert chat ID updated: ${oldChatId} → ${chatId}`);
+
+    // Update .env file with new chat ID
+    try {
+      let envContent = readFileSync('.env', 'utf-8');
+      if (envContent.includes('TELEGRAM_CHAT_ID=')) {
+        envContent = envContent.replace(/TELEGRAM_CHAT_ID=.*/g, `TELEGRAM_CHAT_ID=${chatId}`);
+      } else {
+        envContent += `\nTELEGRAM_CHAT_ID=${chatId}\n`;
+      }
+      writeFileSync('.env', envContent);
+      console.log(`✅ Updated .env with new chat ID: ${chatId}`);
+    } catch (error) {
+      console.error('⚠️  Could not update .env file:', error.message);
+    }
+  } else {
+    console.log(`✅ Alert chat ID confirmed: ${chatId}`);
   }
 
   const welcomeMessage = `
@@ -170,16 +213,20 @@ bot.onText(/\/status/, async (msg) => {
   const minutes = Math.floor((uptime % 3600) / 60);
   const seconds = uptime % 60;
 
+  const tradingMode = paperTrading.isEnabled() ? '🧪 Paper Trading' : '💰 Real Trading';
   const statusMessage = `
 📊 *Bot Status*
 
 *Monitoring:* ${tracker.wallets.length} wallets
 *Poll Interval:* 60 seconds
+*Trading Mode:* ${tradingMode}
 *Uptime:* ${hours}h ${minutes}m ${seconds}s
 *Alerts Sent:* ${stats.alertsSent}
 *Commands Received:* ${stats.commandsReceived}
 
 *Status:* ✅ Active
+
+Use \`/mode\` to toggle trading mode.
   `.trim();
 
   bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
@@ -251,6 +298,11 @@ bot.onText(/\/help/, async (msg) => {
 /stats - Show detailed monitoring statistics
 /help - Show this help message
 
+*Paper Trading:*
+/mode - Toggle paper trading on/off
+/portfolio - View paper trading portfolio
+/reset - Reset paper trading account
+
 *Wallet Commands:*
 /balance \[wallet\] - Quick balance check
 /activity \[wallet\] - Recent transactions
@@ -291,6 +343,123 @@ For more info, see TELEGRAM_BOT.md
   `.trim();
 
   bot.sendMessage(chatId, helpMessage, { parse_mode: 'Markdown' });
+});
+
+// ===== PAPER TRADING COMMANDS =====
+
+/**
+ * /mode - Toggle paper trading mode
+ */
+bot.onText(/\/mode/, async (msg) => {
+  if (!isOwner(msg.from.id)) return;
+
+  stats.commandsReceived++;
+  const chatId = msg.chat.id;
+
+  const enabled = paperTrading.toggle();
+  const portfolio = paperTrading.getPortfolio();
+
+  const message = enabled
+    ? `🧪 *Paper Trading ENABLED*
+
+All buy buttons will now execute simulated trades.
+No real money will be spent.
+
+*Starting Balance:* ${portfolio.balance.toFixed(4)} SOL
+*Total Trades:* ${portfolio.stats.totalTrades}
+
+Use \`/portfolio\` to view your paper holdings.
+Use \`/reset\` to reset your paper account.
+Use \`/mode\` again to switch back to real trading.`
+    : `💰 *Real Trading ENABLED*
+
+⚠️ *WARNING:* Buy buttons will now execute REAL trades with REAL money.
+
+Make sure your bot wallet is funded.
+Use \`/wallet\` to check balance.
+Use \`/mode\` to switch back to paper trading.`;
+
+  bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+});
+
+/**
+ * /portfolio - View paper trading portfolio
+ */
+bot.onText(/\/portfolio/, async (msg) => {
+  if (!isOwner(msg.from.id)) return;
+
+  stats.commandsReceived++;
+  const chatId = msg.chat.id;
+
+  if (!paperTrading.isEnabled()) {
+    bot.sendMessage(chatId, '⚠️ Paper trading is not enabled. Use `/mode` to enable it.', { parse_mode: 'Markdown' });
+    return;
+  }
+
+  const portfolio = paperTrading.getPortfolio();
+  const stats = paperTrading.getStats();
+
+  // Format token holdings
+  let tokensText = '_No tokens held_';
+  if (Object.keys(portfolio.tokens).length > 0) {
+    tokensText = Object.entries(portfolio.tokens)
+      .map(([mint, holding]) => {
+        const mintShort = `${mint.slice(0, 6)}...${mint.slice(-4)}`;
+        return `  • ${holding.symbol || mintShort}: ${holding.amount.toLocaleString()} tokens
+    Avg Price: $${holding.avgPrice.toFixed(8)}
+    Cost: ${holding.totalCost.toFixed(4)} SOL`;
+      })
+      .join('\n\n');
+  }
+
+  const message = `
+📊 *Paper Trading Portfolio*
+
+💰 *SOL Balance:* ${portfolio.balance.toFixed(4)} SOL
+
+🪙 *Token Holdings:*
+${tokensText}
+
+📈 *Performance:*
+• Total Value: ${portfolio.totalValue.toFixed(4)} SOL
+• Total Return: ${stats.totalReturn > 0 ? '+' : ''}${stats.totalReturn.toFixed(4)} SOL (${stats.returnPercent.toFixed(2)}%)
+• Total Trades: ${stats.totalTrades}
+• Win Rate: ${stats.winRate.toFixed(1)}%
+• Wins/Losses: ${stats.wins}/${stats.losses}
+
+Use \`/reset\` to reset account.
+Use \`/mode\` to toggle trading mode.
+  `.trim();
+
+  bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+});
+
+/**
+ * /reset - Reset paper trading account
+ */
+bot.onText(/\/reset/, async (msg) => {
+  if (!isOwner(msg.from.id)) return;
+
+  stats.commandsReceived++;
+  const chatId = msg.chat.id;
+
+  if (!paperTrading.isEnabled()) {
+    bot.sendMessage(chatId, '⚠️ Paper trading is not enabled. Use `/mode` to enable it first.', { parse_mode: 'Markdown' });
+    return;
+  }
+
+  paperTrading.reset(1.0);
+
+  bot.sendMessage(chatId, `
+✅ *Paper Trading Account Reset*
+
+Your paper trading account has been reset to initial state:
+• Balance: 1.0 SOL
+• All tokens sold
+• Stats cleared
+
+Use \`/portfolio\` to view your fresh account.
+  `.trim(), { parse_mode: 'Markdown' });
 });
 
 /**
@@ -800,13 +969,350 @@ bot.onText(/\/txhistory/, async (msg) => {
   }
 });
 
+// ===== BUY BUTTON CALLBACKS =====
+
+// Transaction cache for buy buttons (signature prefix -> transaction details)
+const recentTransactions = new Map();
+
+// Add test transaction for testing buy functionality
+recentTransactions.set('Rk3K9oy6', {
+  signature: 'Rk3K9oy6MEptqV9WMkgMzmQaHw1A6mDS8poasXsF2t7Xfb79HUkNfx34o7WvZx7iCqEQiPDyWgsrZ8X4GCpncgr',
+  wallet: {
+    address: 'EHXRqrpttvDLXxsgvav5mHQ8RX7pcUZd2nCzystxmYGe',
+    name: 'lurking',
+    emoji: '👻'
+  },
+  tokenTransfers: [{
+    mint: 'kh35nynonqA4VYaoeAvn17ChrhMrWhJ26EbCayKpump',
+    symbol: 'TEST',
+    amount: 700167.89
+  }],
+  balanceChanges: {},
+  timestamp: new Date().toISOString()
+});
+console.log('🧪 Test transaction loaded for buy testing (key: Rk3K9oy6)');
+
+/**
+ * Handle buy button clicks from alerts
+ */
+bot.on('callback_query', async (callbackQuery) => {
+  const msg = callbackQuery.message;
+  const data = callbackQuery.data;
+  const userId = callbackQuery.from.id;
+
+  // Security check
+  if (!isOwner(userId)) {
+    await bot.answerCallbackQuery(callbackQuery.id, {
+      text: '❌ Unauthorized',
+      show_alert: true
+    });
+    return;
+  }
+
+  try {
+    const parts = data.split(':');
+    const action = parts[0];
+
+    if (action === 'buy') {
+      // Buy with fixed amount: buy:amount:shortSig
+      const [, amountStr, shortSig] = parts;
+      const amount = parseFloat(amountStr);
+      const txDetails = recentTransactions.get(shortSig);
+
+      if (!txDetails) {
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: '❌ Transaction expired. Please wait for new alert.',
+          show_alert: true
+        });
+        return;
+      }
+
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: `🔄 Processing ${paperTrading.isEnabled() ? 'paper' : 'real'} buy of ${amount} SOL...`
+      });
+
+      // Check if paper trading is enabled
+      if (paperTrading.isEnabled()) {
+        // PAPER TRADING MODE
+        const portfolio = paperTrading.getPortfolio();
+
+        if (portfolio.balance < amount) {
+          await bot.sendMessage(msg.chat.id, `❌ Insufficient paper balance. You have ${portfolio.balance.toFixed(4)} SOL but need ${amount} SOL.
+
+Use \`/reset\` to get more paper money.`, { parse_mode: 'Markdown' });
+          return;
+        }
+      } else {
+        // REAL TRADING MODE
+        if (!botWallet.wallet) {
+          await bot.sendMessage(msg.chat.id, '❌ Bot wallet not configured. Use `/wallet` to set up.', { parse_mode: 'Markdown' });
+          return;
+        }
+
+        const balance = await botWallet.getBalance();
+        if (balance < amount) {
+          await bot.sendMessage(msg.chat.id, `❌ Insufficient balance. You have ${balance.toFixed(4)} SOL but need ${amount} SOL.`);
+          return;
+        }
+      }
+
+      // Extract token mint from transaction
+      const tokenTransfers = txDetails.tokenTransfers || [];
+      if (tokenTransfers.length === 0) {
+        await bot.sendMessage(msg.chat.id, '❌ No token transfers found in this transaction. Cannot determine what to buy.');
+        return;
+      }
+
+      // Get the first token that was received (assuming it's what they want to buy)
+      const tokenToBuy = tokenTransfers.find(t => t.amount && t.amount > 0);
+      if (!tokenToBuy || !tokenToBuy.mint) {
+        await bot.sendMessage(msg.chat.id, '❌ Could not identify token to buy from transaction.');
+        return;
+      }
+
+      try {
+        if (paperTrading.isEnabled()) {
+          // ===== PAPER TRADING EXECUTION =====
+          await bot.sendMessage(msg.chat.id, `
+🧪 *Executing Paper Trade*
+
+*Spending:* ${amount} SOL
+*Token:* ${tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8) + '...'}
+*Mode:* Paper Trading (Simulated)
+
+Simulating trade...
+          `.trim(), { parse_mode: 'Markdown' });
+
+          // Get token analysis for price estimation
+          const analysis = await tokenAnalyzer.getTokenMetadata(tokenToBuy.mint);
+          const pricePerToken = analysis?.price || 0.0001; // Fallback price
+
+          // Execute paper trade
+          const result = await paperTrading.buy(
+            tokenToBuy.mint,
+            tokenToBuy.symbol || 'UNKNOWN',
+            amount,
+            pricePerToken
+          );
+
+          const successMsg = `
+✅ *Paper Trade Executed!*
+
+*Input:* ${amount} SOL
+*Output:* ${result.trade.tokensReceived.toLocaleString()} ${tokenToBuy.symbol || 'tokens'}
+*Price:* $${pricePerToken.toFixed(8)} per token
+
+📊 *Your Paper Portfolio:*
+• SOL Balance: ${result.portfolio.balance.toFixed(4)} SOL
+• Total Trades: ${result.portfolio.stats.totalTrades}
+• ${tokenToBuy.symbol || 'Token'}: ${result.portfolio.tokens[tokenToBuy.mint].amount.toLocaleString()} tokens
+
+*Original Alert TX:* [View](https://solscan.io/tx/${txDetails.signature})
+
+Use \`/portfolio\` to see full portfolio.
+Use \`/mode\` to switch to real trading.
+          `.trim();
+
+          await bot.sendMessage(msg.chat.id, successMsg, {
+            parse_mode: 'Markdown',
+            disable_web_page_preview: true
+          });
+
+        } else {
+          // ===== REAL TRADING EXECUTION =====
+          await bot.sendMessage(msg.chat.id, `
+⏳ *Executing Real Swap via Jupiter*
+
+*Spending:* ${amount} SOL
+*Token:* ${tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8) + '...'}
+*Slippage:* 1%
+
+Getting best price across all DEXs...
+          `.trim(), { parse_mode: 'Markdown' });
+
+          // Execute swap using Jupiter with API key
+          const swapResult = await jupiterTrader.buySolToToken(tokenToBuy.mint, amount, 100);
+
+          // Success message
+          const successMsg = `
+✅ *Swap Successful!*
+
+*Input:* ${amount} SOL
+*Output:* ~${(swapResult.outputAmount / 1e9).toFixed(4)} ${tokenToBuy.symbol || 'tokens'}
+*Price Impact:* ${swapResult.priceImpact}%
+
+*Swap TX:* [View on Solscan](https://solscan.io/tx/${swapResult.signature})
+*Original Alert TX:* [View](https://solscan.io/tx/${txDetails.signature})
+
+[View your wallet](https://solscan.io/account/${botWallet.getPublicKey()})
+          `.trim();
+
+          await bot.sendMessage(msg.chat.id, successMsg, {
+            parse_mode: 'Markdown',
+            disable_web_page_preview: true
+          });
+        }
+
+      } catch (error) {
+        console.error('❌ Buy failed:', error);
+
+        // Provide fallback Jupiter link on error
+        const jupiterUrl = `https://jup.ag/swap/SOL-${tokenToBuy.mint}`;
+        await bot.sendMessage(msg.chat.id, `❌ *Automatic Swap Failed*
+
+${error.message}
+
+**Fallback Option:**
+[→ Open Jupiter Manually](${jupiterUrl})
+
+Copy token mint: \`${tokenToBuy.mint}\`
+
+[View wallet](https://solscan.io/account/${botWallet.getPublicKey()})`, {
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true
+        });
+      }
+
+    } else if (action === 'custom') {
+      // Custom amount: custom:shortSig
+      const [, shortSig] = parts;
+      const txDetails = recentTransactions.get(shortSig);
+
+      if (!txDetails) {
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: '❌ Transaction expired',
+          show_alert: true
+        });
+        return;
+      }
+
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: '💬 Send amount in next message'
+      });
+
+      const tokenTransfers = txDetails.tokenTransfers || [];
+      const token = tokenTransfers.find(t => t.amount && t.amount > 0);
+      const tokenInfo = token ? (token.symbol || token.mint.slice(0, 8) + '...') : 'Unknown';
+
+      await bot.sendMessage(msg.chat.id, `
+💰 *Custom Buy Amount*
+
+Token: ${tokenInfo}
+Related TX: [View](https://solscan.io/tx/${txDetails.signature})
+
+Reply with the SOL amount you want to spend.
+
+Example: \`0.25\`
+
+_Note: Use the /send command format if needed._
+      `.trim(), { parse_mode: 'Markdown', disable_web_page_preview: true });
+
+      // Store pending custom buy (you'd implement this with a state manager)
+      // For now, user would need to use /send command
+
+    } else if (action === 'copy') {
+      // Copy trade: copy:shortSig
+      const [, shortSig] = parts;
+      const txDetails = recentTransactions.get(shortSig);
+
+      if (!txDetails) {
+        await bot.answerCallbackQuery(callbackQuery.id, {
+          text: '❌ Transaction expired',
+          show_alert: true
+        });
+        return;
+      }
+
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: '🔄 Analyzing transaction...'
+      });
+
+      // TODO: Calculate proportional trade based on wallet balances
+      // For now, suggest manual amount
+      const tokenTransfers = txDetails.tokenTransfers || [];
+      const token = tokenTransfers.find(t => t.amount && t.amount > 0);
+      const tokenInfo = token ? (token.symbol || token.mint.slice(0, 8) + '...') : 'Unknown';
+
+      const confirmMsg = `
+📋 *Copy Trade*
+
+*Token:* ${tokenInfo}
+*Original TX:* [View](https://solscan.io/tx/${txDetails.signature})
+*Whale Wallet:* ${txDetails.wallet.emoji} ${txDetails.wallet.name}
+
+⚠️ *Manual Copy Required*
+Use the buy buttons above to copy this trade with your desired amount.
+
+Recommended: Start with 0.01-0.1 SOL to test.
+
+[Track your wallet](https://solscan.io/account/${botWallet.getPublicKey()})
+      `.trim();
+
+      await bot.sendMessage(msg.chat.id, confirmMsg, {
+        parse_mode: 'Markdown',
+        disable_web_page_preview: true
+      });
+    }
+
+  } catch (error) {
+    console.error('Error handling callback:', error);
+    await bot.answerCallbackQuery(callbackQuery.id, {
+      text: `❌ Error: ${error.message}`,
+      show_alert: true
+    });
+  }
+});
+
 // ===== ALERT HANDLERS =====
+
+/**
+ * Escape markdown special characters
+ */
+function escapeMarkdown(text) {
+  if (!text) return '';
+  // Only escape characters that break Telegram markdown
+  // Don't escape: . , - numbers (they're safe in regular text)
+  return text.toString().replace(/[_*[\]()~`>#+=|{}]/g, '\\$&');
+}
 
 /**
  * Format alert message for Telegram
  */
 function formatAlert(alert, alertType) {
-  const { wallet, transaction, timestamp } = alert;
+  // Defensive checks
+  if (!alert || !alert.wallet) {
+    console.error('Invalid alert object:', alert);
+    return '❌ Error: Invalid alert data';
+  }
+
+  const { wallet, timestamp } = alert;
+
+  // Some alerts have balance instead of transaction
+  if (!alert.transaction && alert.balance) {
+    // Handle BALANCE_CHANGE alerts
+    const { balance } = alert;
+    const changeAmount = Math.abs(balance.change);
+    const direction = balance.change > 0 ? '📈 Increased' : '📉 Decreased';
+
+    return `
+📊 *Balance Change*
+
+*Wallet:* ${wallet.emoji} ${wallet.name}
+*Change:* ${direction} by ${changeAmount.toFixed(4)} SOL
+*Old Balance:* ${balance.old.toFixed(4)} SOL
+*New Balance:* ${balance.new.toFixed(4)} SOL
+*Time:* ${new Date(timestamp).toLocaleString()}
+
+[View Wallet](https://solscan.io/account/${wallet.address})
+    `.trim();
+  }
+
+  if (!alert.transaction) {
+    console.error('Alert missing transaction data:', alert);
+    return '❌ Error: Alert missing transaction data';
+  }
+
+  const transaction = alert.transaction;
 
   // Choose emoji and title based on alert type
   let emoji = '🔔';
@@ -862,16 +1368,18 @@ function formatAlert(alert, alertType) {
         .map(t => {
           if (!t) return null;
           const amount = t.amount ? t.amount.toLocaleString() : 'Unknown';
-          const symbol = t.symbol || (t.mint ? t.mint.slice(0, 8) + '...' : 'Unknown');
-          return `  • ${amount} ${symbol}`;
+          const symbol = t.symbol || (t.mint ? `${t.mint.slice(0, 6)}...${t.mint.slice(-4)}` : 'Unknown');
+          // Format amount with sign
+          const sign = t.amount > 0 ? '+' : '';
+          return `  ${sign}${amount} ${symbol}`;
         })
         .filter(t => t !== null)
         .join('\n');
 
       if (tokens) {
-        tokenInfo = `\n*Tokens:*\n${tokens}`;
+        tokenInfo = `\n\n📦 *Tokens:*\n${tokens}`;
         if (transaction.tokenTransfers.length > 3) {
-          tokenInfo += `\n  _+ ${transaction.tokenTransfers.length - 3} more_`;
+          tokenInfo += `\n  _...and ${transaction.tokenTransfers.length - 3} more_`;
         }
       }
     } catch (error) {
@@ -900,6 +1408,12 @@ ${emoji} *${title}*
   message += `\n*Time:* ${new Date(timestamp).toLocaleString()}`;
   message += `\n\n[View on Solscan](https://solscan.io/tx/${transaction.signature})`;
 
+  // Add AI-generated thesis if available
+  if (alert.thesis && alert.thesis.thesis) {
+    message += `\n\n━━━━━━━━━━━━━━━━━━━━\n`;
+    message += thesisAgent.formatForTelegram(alert.thesis);
+  }
+
   return message.trim();
 }
 
@@ -919,10 +1433,53 @@ async function sendAlert(alert, alertType) {
 
   try {
     const message = formatAlert(alert, alertType);
-    await bot.sendMessage(alertChatId, message, {
+
+    // Only add buy buttons for alerts with transactions (not balance changes)
+    const messageOptions = {
       parse_mode: 'Markdown',
       disable_web_page_preview: true
-    });
+    };
+
+    if (alert.transaction && alert.transaction.signature) {
+      // Cache transaction details for buy buttons
+      const shortSig = alert.transaction.signature.slice(0, 8);
+      recentTransactions.set(shortSig, {
+        signature: alert.transaction.signature,
+        wallet: alert.wallet,
+        tokenTransfers: alert.transaction.tokenTransfers || [],
+        balanceChanges: alert.transaction.balanceChanges || {},
+        timestamp: alert.timestamp
+      });
+
+      // Clean old transactions (keep last 100)
+      if (recentTransactions.size > 100) {
+        const firstKey = recentTransactions.keys().next().value;
+        recentTransactions.delete(firstKey);
+      }
+
+      // Create inline keyboard with buy options
+      // Use shortened signature (first 8 chars) to fit in Telegram's 64-byte callback_data limit
+      messageOptions.reply_markup = {
+        inline_keyboard: [
+          [
+            { text: '🛒 Buy 0.01 SOL', callback_data: `buy:0.01:${shortSig}` },
+            { text: '🛒 Buy 0.05 SOL', callback_data: `buy:0.05:${shortSig}` }
+          ],
+          [
+            { text: '🛒 Buy 0.1 SOL', callback_data: `buy:0.1:${shortSig}` },
+            { text: '🛒 Buy 0.5 SOL', callback_data: `buy:0.5:${shortSig}` }
+          ],
+          [
+            { text: '💰 Custom Amount', callback_data: `custom:${shortSig}` }
+          ],
+          [
+            { text: '📋 Copy Trade', callback_data: `copy:${shortSig}` }
+          ]
+        ]
+      };
+    }
+
+    await bot.sendMessage(alertChatId, message, messageOptions);
     stats.alertsSent++;
     console.log(`✅ Alert sent: ${alertType} for ${alert.wallet.name}`);
   } catch (error) {
@@ -951,12 +1508,52 @@ monitor.on(AlertType.TRANSACTION_SENT, async (alert) => {
 });
 
 monitor.on(AlertType.TOKEN_TRANSFER, async (alert) => {
+  // Generate AI thesis for token transfers
+  try {
+    const tokenTransfers = alert.transaction?.tokenTransfers || [];
+
+    if (tokenTransfers.length > 0) {
+      // Analyze the first token (usually the main one)
+      const tokenToBuy = tokenTransfers.find(t => t.amount && t.amount > 0);
+
+      if (tokenToBuy && tokenToBuy.mint) {
+        console.log(`🤖 Generating thesis for ${tokenToBuy.symbol || tokenToBuy.mint.slice(0, 8)}...`);
+
+        // Analyze token
+        const analysis = await tokenAnalyzer.analyzeToken(tokenToBuy.mint, alert.wallet.trackedWalletAddress);
+
+        if (analysis.success) {
+          // Generate scoring
+          const scoring = tokenAnalyzer.scoreToken(analysis);
+          analysis.scoring = scoring;
+
+          // Generate AI thesis
+          const thesisResult = await thesisAgent.generateThesis(
+            analysis,
+            alert.wallet,
+            alert.transaction
+          );
+
+          // Add thesis to alert for display
+          alert.thesis = thesisResult;
+          alert.analysis = analysis;
+
+          console.log(`✅ Thesis: ${thesisResult.recommendation} (Score: ${thesisResult.score}/100)`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error generating thesis:', error.message);
+    // Continue sending alert even if thesis generation fails
+  }
+
   await sendAlert(alert, AlertType.TOKEN_TRANSFER);
 });
 
-monitor.on(AlertType.BALANCE_CHANGE, async (alert) => {
-  await sendAlert(alert, AlertType.BALANCE_CHANGE);
-});
+// Disabled - BALANCE_CHANGE alerts are redundant (every transaction changes balance)
+// monitor.on(AlertType.BALANCE_CHANGE, async (alert) => {
+//   await sendAlert(alert, AlertType.BALANCE_CHANGE);
+// });
 
 monitor.on(AlertType.NEW_TRANSACTION, async (alert) => {
   await sendAlert(alert, AlertType.NEW_TRANSACTION);

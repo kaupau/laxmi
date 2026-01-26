@@ -1,61 +1,61 @@
 import { EventEmitter } from 'events';
-
-/**
- * Alert types
- */
-export const AlertType = {
-  TRANSACTION_RECEIVED: 'TRANSACTION_RECEIVED',
-  TRANSACTION_SENT: 'TRANSACTION_SENT',
-  BALANCE_CHANGE: 'BALANCE_CHANGE',
-  TOKEN_TRANSFER: 'TOKEN_TRANSFER',
-  LARGE_TRANSACTION: 'LARGE_TRANSACTION',
-  NEW_TRANSACTION: 'NEW_TRANSACTION'
-};
+import type { WalletTracker } from './tracker.js';
+import type { WalletConfig } from './types/wallet.js';
+import {
+  AlertType,
+  type Alert,
+  type TransactionAlert,
+  type BalanceChangeAlert,
+  type WebhookConfig,
+  type MonitorOptions,
+  type MonitorStats,
+} from './types/alerts.js';
 
 /**
  * WalletMonitor - Real-time wallet monitoring and alerting
  */
 export class WalletMonitor extends EventEmitter {
-  constructor(tracker, options = {}) {
+  private tracker: WalletTracker;
+  private options: Required<MonitorOptions>;
+  private isMonitoring: boolean = false;
+  private lastChecked: Map<string, string> = new Map();
+  private lastBalances: Map<string, number> = new Map();
+  private webhooks: WebhookConfig[] = [];
+  private filters: Map<string, (alert: Alert) => boolean> = new Map();
+
+  constructor(tracker: WalletTracker, options: MonitorOptions = {}) {
     super();
     this.tracker = tracker;
     this.options = {
       pollInterval: options.pollInterval || 10000, // 10 seconds
       largeTransactionThreshold: options.largeTransactionThreshold || 10, // 10 SOL
-      ...options
     };
-
-    this.isMonitoring = false;
-    this.lastChecked = new Map(); // wallet -> last signature
-    this.lastBalances = new Map(); // wallet -> balance
-    this.webhooks = [];
-    this.filters = new Map(); // wallet -> filters
   }
 
   /**
    * Register a webhook for alerts
    */
-  registerWebhook(config) {
+  registerWebhook(config: Partial<WebhookConfig> & { url: string }): void {
     this.webhooks.push({
       url: config.url,
       events: config.events || Object.values(AlertType),
       wallets: config.wallets || 'all',
       filters: config.filters || {},
-      headers: config.headers || {}
+      headers: config.headers || {},
     });
   }
 
   /**
    * Add custom alert filter
    */
-  addFilter(walletName, filterFn) {
+  addFilter(walletName: string, filterFn: (alert: Alert) => boolean): void {
     this.filters.set(walletName, filterFn);
   }
 
   /**
    * Start monitoring wallets
    */
-  async start() {
+  async start(): Promise<void> {
     if (this.isMonitoring) {
       return;
     }
@@ -81,7 +81,7 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Stop monitoring
    */
-  stop() {
+  stop(): void {
     this.isMonitoring = false;
     console.log('🛑 Wallet monitor stopped');
   }
@@ -89,12 +89,12 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Main monitoring loop
    */
-  async _monitorLoop() {
+  private async _monitorLoop(): Promise<void> {
     while (this.isMonitoring) {
       try {
         await this._checkAllWallets();
       } catch (error) {
-        console.error('Monitor error:', error.message);
+        console.error('Monitor error:', (error as Error).message);
         this.emit('error', error);
       }
 
@@ -105,7 +105,7 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Check all wallets for changes
    */
-  async _checkAllWallets() {
+  private async _checkAllWallets(): Promise<void> {
     for (const wallet of this.tracker.wallets) {
       await this._checkWallet(wallet);
     }
@@ -114,12 +114,12 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Check single wallet for changes
    */
-  async _checkWallet(wallet) {
+  private async _checkWallet(wallet: WalletConfig): Promise<void> {
     // Check for new transactions
     const txs = await this.tracker.getRecentTransactions(wallet.trackedWalletAddress, 5);
 
     const lastSig = this.lastChecked.get(wallet.name);
-    const newTransactions = [];
+    const newTransactions: any[] = [];
 
     for (const tx of txs) {
       if (tx.signature === lastSig) break;
@@ -145,17 +145,17 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Process a new transaction
    */
-  async _processTransaction(wallet, tx) {
+  private async _processTransaction(wallet: WalletConfig, tx: any): Promise<void> {
     try {
       const details = await this.tracker.getTransactionDetails(tx.signature);
 
-      const alert = {
+      const alert: TransactionAlert = {
         type: AlertType.NEW_TRANSACTION,
         timestamp: tx.blockTime ? new Date(tx.blockTime * 1000).toISOString() : new Date().toISOString(),
         wallet: {
           address: wallet.trackedWalletAddress,
           name: wallet.name,
-          emoji: wallet.emoji
+          emoji: wallet.emoji || '📍',
         },
         transaction: {
           signature: tx.signature,
@@ -163,8 +163,8 @@ export class WalletMonitor extends EventEmitter {
           success: details.success,
           fee: details.fee,
           balanceChanges: details.balanceChanges,
-          tokenTransfers: details.tokenTransfers
-        }
+          tokenTransfers: details.tokenTransfers,
+        },
       };
 
       // Determine transaction direction
@@ -179,44 +179,44 @@ export class WalletMonitor extends EventEmitter {
 
       // Check for large transaction
       if (Math.abs(walletChange) >= this.options.largeTransactionThreshold) {
-        const largeAlert = { ...alert, type: AlertType.LARGE_TRANSACTION };
+        const largeAlert: TransactionAlert = { ...alert, type: AlertType.LARGE_TRANSACTION };
         this._emitAlert(wallet, largeAlert);
       }
 
       // Check for token transfers
       if (details.tokenTransfers.length > 0) {
         console.log(`  🪙 Token transfers detected: ${details.tokenTransfers.length}`);
-        const tokenAlert = { ...alert, type: AlertType.TOKEN_TRANSFER };
+        const tokenAlert: TransactionAlert = { ...alert, type: AlertType.TOKEN_TRANSFER };
         this._emitAlert(wallet, tokenAlert);
       }
 
       this._emitAlert(wallet, alert);
     } catch (error) {
-      console.error(`Error processing transaction ${tx.signature}:`, error.message);
+      console.error(`Error processing transaction ${tx.signature}:`, (error as Error).message);
     }
   }
 
   /**
    * Check for balance changes
    */
-  async _checkBalanceChange(wallet) {
+  private async _checkBalanceChange(wallet: WalletConfig): Promise<void> {
     const newBalance = await this.tracker.getBalance(wallet.trackedWalletAddress);
     const oldBalance = this.lastBalances.get(wallet.name);
 
     if (oldBalance !== undefined && Math.abs(newBalance - oldBalance) > 0.0001) {
-      const alert = {
+      const alert: BalanceChangeAlert = {
         type: AlertType.BALANCE_CHANGE,
         timestamp: new Date().toISOString(),
         wallet: {
           address: wallet.trackedWalletAddress,
           name: wallet.name,
-          emoji: wallet.emoji
+          emoji: wallet.emoji || '📍',
         },
         balance: {
           old: oldBalance,
           new: newBalance,
-          change: newBalance - oldBalance
-        }
+          change: newBalance - oldBalance,
+        },
       };
 
       this.lastBalances.set(wallet.name, newBalance);
@@ -229,7 +229,7 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Emit alert to all listeners and webhooks
    */
-  _emitAlert(wallet, alert) {
+  private _emitAlert(wallet: WalletConfig, alert: Alert): void {
     // Apply custom filters
     const filter = this.filters.get(wallet.name);
     if (filter && !filter(alert)) {
@@ -252,7 +252,7 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Check if alert should be sent based on wallet config
    */
-  _shouldAlert(wallet, alert) {
+  private _shouldAlert(wallet: WalletConfig, alert: Alert): boolean {
     // Use wallet config to determine if alert should be sent
     // For now, use the alertsOnFeed setting
     return wallet.alertsOnFeed !== false;
@@ -261,7 +261,7 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Send alert to webhooks
    */
-  async _sendWebhooks(alert) {
+  private async _sendWebhooks(alert: Alert): Promise<void> {
     for (const webhook of this.webhooks) {
       // Check if this webhook wants this event type
       if (!webhook.events.includes(alert.type)) {
@@ -274,7 +274,7 @@ export class WalletMonitor extends EventEmitter {
       }
 
       // Check filters
-      if (webhook.filters.minAmount && alert.transaction?.amount < webhook.filters.minAmount) {
+      if ('transaction' in alert && webhook.filters.minAmount && alert.transaction?.amount && alert.transaction.amount < webhook.filters.minAmount) {
         continue;
       }
 
@@ -283,12 +283,12 @@ export class WalletMonitor extends EventEmitter {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            ...webhook.headers
+            ...webhook.headers,
           },
-          body: JSON.stringify(alert)
+          body: JSON.stringify(alert),
         });
       } catch (error) {
-        console.error(`Webhook error (${webhook.url}):`, error.message);
+        console.error(`Webhook error (${webhook.url}):`, (error as Error).message);
       }
     }
   }
@@ -296,14 +296,14 @@ export class WalletMonitor extends EventEmitter {
   /**
    * Get monitoring statistics
    */
-  getStats() {
+  getStats(): MonitorStats {
     return {
       isMonitoring: this.isMonitoring,
       walletsMonitored: this.tracker.wallets.length,
       pollInterval: this.options.pollInterval,
       webhooksRegistered: this.webhooks.length,
       lastChecked: Object.fromEntries(this.lastChecked),
-      currentBalances: Object.fromEntries(this.lastBalances)
+      currentBalances: Object.fromEntries(this.lastBalances),
     };
   }
 }
@@ -312,15 +312,17 @@ export class WalletMonitor extends EventEmitter {
  * Simple alert logger
  */
 export class AlertLogger {
-  constructor(outputPath = null) {
+  private outputPath: string | null;
+  private alerts: (Alert & { loggedAt: string })[] = [];
+
+  constructor(outputPath: string | null = null) {
     this.outputPath = outputPath;
-    this.alerts = [];
   }
 
-  log(alert) {
+  log(alert: Alert): void {
     this.alerts.push({
       ...alert,
-      loggedAt: new Date().toISOString()
+      loggedAt: new Date().toISOString(),
     });
 
     const summary = this._formatAlert(alert);
@@ -333,40 +335,42 @@ export class AlertLogger {
     }
   }
 
-  _formatAlert(alert) {
+  private _formatAlert(alert: Alert): string {
     const time = new Date(alert.timestamp).toLocaleTimeString();
     const wallet = `${alert.wallet.emoji} ${alert.wallet.name}`;
 
     switch (alert.type) {
       case AlertType.TRANSACTION_RECEIVED:
-        return `[${time}] ${wallet} ← Received ${alert.transaction.amount.toFixed(4)} SOL`;
+        return `[${time}] ${wallet} ← Received ${(alert as TransactionAlert).transaction.amount?.toFixed(4)} SOL`;
 
       case AlertType.TRANSACTION_SENT:
-        return `[${time}] ${wallet} → Sent ${alert.transaction.amount.toFixed(4)} SOL`;
+        return `[${time}] ${wallet} → Sent ${(alert as TransactionAlert).transaction.amount?.toFixed(4)} SOL`;
 
       case AlertType.LARGE_TRANSACTION:
-        return `[${time}] 🚨 ${wallet} Large transaction: ${alert.transaction.amount.toFixed(4)} SOL`;
+        return `[${time}] 🚨 ${wallet} Large transaction: ${(alert as TransactionAlert).transaction.amount?.toFixed(4)} SOL`;
 
       case AlertType.TOKEN_TRANSFER:
         return `[${time}] ${wallet} 🪙 Token transfer detected`;
 
       case AlertType.BALANCE_CHANGE:
-        const change = alert.balance.change;
+        const balanceAlert = alert as BalanceChangeAlert;
+        const change = balanceAlert.balance.change;
         const sign = change > 0 ? '+' : '';
-        return `[${time}] ${wallet} Balance: ${alert.balance.old.toFixed(4)} → ${alert.balance.new.toFixed(4)} (${sign}${change.toFixed(4)} SOL)`;
+        return `[${time}] ${wallet} Balance: ${balanceAlert.balance.old.toFixed(4)} → ${balanceAlert.balance.new.toFixed(4)} (${sign}${change.toFixed(4)} SOL)`;
 
       default:
         return `[${time}] ${wallet} ${alert.type}`;
     }
   }
 
-  getAlerts() {
+  getAlerts(): (Alert & { loggedAt: string })[] {
     return this.alerts;
   }
 
-  clear() {
+  clear(): void {
     this.alerts = [];
   }
 }
 
+export { AlertType };
 export default WalletMonitor;

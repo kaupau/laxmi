@@ -31,9 +31,10 @@ Solana Wallet Tracker - Real-time monitoring, alerts, transaction analysis, and 
 - 🔄 Copy trading bot framework
 - 🐋 Whale follower strategies
 - 🎯 Token sniping capabilities
-- 🧪 Dry-run mode for safe testing
+- 🧪 **Paper Trading** - Test strategies risk-free with simulated trades
 - ⚡ Event-driven trading triggers
-- 📊 Trading statistics and history
+- 📊 Trading statistics and performance tracking
+- 🤖 **AI Trade Thesis** - Claude-powered trade analysis and recommendations
 
 ### 🚀 Pigeon.trade Integration (NEW!)
 - 📊 **Full Token Portfolio Tracking** - Track all SPL tokens with real USD values (not just SOL)
@@ -83,8 +84,15 @@ npm start
 ### Run Tests
 
 ```bash
-npm test
+npm test              # Run all tests
+npm run test:paper    # Paper trading tests only
+npm run test:analyzer # Token analyzer tests only
 ```
+
+**Test Coverage:**
+- ✅ Paper trading (12 tests)
+- ✅ Token analyzer (11 tests)
+- 📝 See [docs/TESTING.md](docs/TESTING.md) for details
 
 ### Advanced Examples
 
@@ -199,7 +207,7 @@ await bot.start();
 - Test on devnet before mainnet
 - Use small amounts
 - Trading involves financial risk
-- See [TRADING.md](./TRADING.md) for complete guide
+- See [TRADING.md](./docs/TRADING.md) for complete guide
 
 ### 6. Enhanced Portfolio with Pigeon Integration
 
@@ -238,7 +246,7 @@ const smartMoves = await tracker.detectTrendingPurchases('whale');
 console.log(`Trending purchases: ${smartMoves.count}`);
 ```
 
-**See [PIGEON_INTEGRATION.md](./PIGEON_INTEGRATION.md) for complete integration guide**
+**See [PIGEON_INTEGRATION.md](./docs/PIGEON_INTEGRATION.md) for complete integration guide**
 
 ## Trading Features
 
@@ -268,7 +276,37 @@ npm run copy-trading
 - **Token Sniper**: Buy tokens when tracked wallets buy them
 - **Custom Strategies**: Build your own trading logic
 
-See [TRADING.md](./TRADING.md) for detailed documentation and examples.
+See [TRADING.md](./docs/TRADING.md) for detailed documentation and examples.
+
+### Paper Trading
+
+Test your strategies risk-free with simulated trading:
+
+```bash
+# In Telegram bot, use these commands:
+/mode        # Toggle paper trading on/off
+/portfolio   # View paper trading portfolio
+/reset       # Reset paper account to 1 SOL
+```
+
+**Features:**
+- 🧪 **Risk-free Testing** - No real money spent
+- 📊 **Portfolio Tracking** - Track SOL and token holdings
+- 📈 **Performance Stats** - Win rate, P&L, ROI
+- 💾 **Persistent** - Saves between bot restarts
+- 🔄 **Easy Toggle** - Switch between paper and real instantly
+
+**Example Session:**
+```
+/mode                  → Enable paper trading
+[Click buy button]     → Execute simulated trade
+/portfolio             → Check portfolio (0.9 SOL + tokens)
+[Wait for price move]
+/portfolio             → Check updated value
+/mode                  → Switch to real trading when ready
+```
+
+See [docs/PAPER_TRADING.md](docs/PAPER_TRADING.md) for complete guide.
 
 ## API Reference
 
@@ -462,16 +500,16 @@ Get instant Telegram notifications when your tracked wallets have activity.
 - `/stats` - Show statistics
 - `/help` - Command list
 
-**See [TELEGRAM_BOT.md](./TELEGRAM_BOT.md) for complete setup guide and customization options.**
+**See [TELEGRAM_BOT.md](./docs/TELEGRAM_BOT.md) for complete setup guide and customization options.**
 
 ## Documentation
 
-- **[API.md](./API.md)** - Complete API reference with input/output specs
-- **[PIGEON_INTEGRATION.md](./PIGEON_INTEGRATION.md)** - 🚀 Pigeon.trade integration guide for enhanced features
-- **[EXTENSIONS.md](./EXTENSIONS.md)** - Advanced patterns, integrations, and workflows
-- **[TRADING.md](./TRADING.md)** - 🆕 Trading bot guide, wallet management, and strategies
-- **[TELEGRAM_BOT.md](./TELEGRAM_BOT.md)** - 🆕 Telegram alert bot setup and customization
-- **[AGENTS.md](./AGENTS.md)** - 🤖 AI agent integration guide (also: [CLAUDE.md](./CLAUDE.md))
+- **[API.md](./docs/API.md)** - Complete API reference with input/output specs
+- **[PIGEON_INTEGRATION.md](./docs/PIGEON_INTEGRATION.md)** - 🚀 Pigeon.trade integration guide for enhanced features
+- **[EXTENSIONS.md](./docs/EXTENSIONS.md)** - Advanced patterns, integrations, and workflows
+- **[TRADING.md](./docs/TRADING.md)** - 🆕 Trading bot guide, wallet management, and strategies
+- **[TELEGRAM_BOT.md](./docs/TELEGRAM_BOT.md)** - 🆕 Telegram alert bot setup and customization
+- **[AGENTS.md](./docs/AGENTS.md)** - 🤖 AI agent integration guide (also: [CLAUDE.md](./CLAUDE.md))
 - **[examples/](./examples/)** - Working code examples
 
 ## Use Cases
@@ -486,21 +524,34 @@ Get instant Telegram notifications when your tracked wallets have activity.
 ## Project Structure
 
 ```
-laxmi/
-├── src/
-│   ├── tracker.js           # Core wallet tracking
-│   ├── alerts.js            # Monitoring and alerts
-│   ├── example.js           # Basic usage examples
-│   └── tracker.test.js      # Test suite
-├── examples/
-│   ├── detailed-transactions.js  # Transaction analysis
-│   ├── monitor-wallets.js        # Real-time monitoring
-│   ├── webhook-demo.js           # Webhook integration
-│   └── quick-test.js            # Feature testing
-├── wallets.json             # Wallet configuration
-├── API.md                   # API documentation
-├── EXTENSIONS.md            # Advanced guides
-└── README.md                # This file
+/root
+├── telegram-bot.js          # 🚀 Main Telegram bot with auto-buy functionality
+├── bot-manager.sh           # Bot process manager (start/stop/status)
+├── start-bot.sh             # Quick start script
+├── package.json             # Dependencies
+├── wallets.json             # Tracked wallet list
+├── .env                     # Environment variables (API keys, credentials)
+├── .env.example             # Example environment file
+│
+├── src/                     # Source code modules
+│   ├── tracker.js           # Wallet tracking & transaction monitoring
+│   ├── alerts.js            # Alert system & event emitters
+│   ├── wallet.js            # Wallet management & operations
+│   └── jupiter-trader.js    # 🔄 Jupiter DEX integration for swaps
+│
+├── docs/                    # 📚 Documentation
+│   ├── JUPITER_STATUS.md    # Jupiter integration status
+│   ├── WORKING_SUMMARY.md   # Current working features
+│   ├── API.md               # Complete API reference
+│   ├── TRADING.md           # Trading bot guide
+│   ├── TELEGRAM_BOT.md      # Telegram setup guide
+│   ├── AGENTS.md            # AI agent integration
+│   └── EXTENSIONS.md        # Advanced patterns
+│
+└── examples/                # Code examples
+    ├── basic-tracking.js
+    ├── alert-handling.js
+    └── monitor-wallets.js
 ```
 
 ## Environment Variables
