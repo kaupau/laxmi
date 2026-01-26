@@ -31,9 +31,5 @@ test-paper-trades.json
 # Wallet configuration (may contain private keys in comments)
 # wallets.json is tracked but verify it has no secrets
 
-# TypeScript build artifacts
-dist/
-*.tsbuildinfo
-
 # Test artifacts
 .DS_Store
