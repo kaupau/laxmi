@@ -81,6 +81,34 @@ export class PaperTrading {
   }
 
   /**
+   * Fetch current prices from DexScreener for all holdings
+   */
+  async fetchCurrentPrices() {
+    const prices = {};
+
+    for (const mint of Object.keys(this.data.tokens)) {
+      try {
+        const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`);
+        const data = await response.json();
+
+        if (data.pairs && data.pairs.length > 0) {
+          // Get the first pair (usually the most liquid)
+          prices[mint] = parseFloat(data.pairs[0].priceUsd) || this.data.tokens[mint].avgPrice;
+        } else {
+          // Fallback to cost basis if no price found
+          prices[mint] = this.data.tokens[mint].avgPrice;
+        }
+      } catch (error) {
+        console.error(`Error fetching price for ${mint}:`, error.message);
+        // Fallback to cost basis
+        prices[mint] = this.data.tokens[mint].avgPrice;
+      }
+    }
+
+    return prices;
+  }
+
+  /**
    * Calculate total portfolio value (requires current prices)
    */
   calculateTotalValue(tokenPrices = {}) {
@@ -93,6 +121,42 @@ export class PaperTrading {
     }
 
     return totalValue;
+  }
+
+  /**
+   * Get portfolio with real-time prices and P&L
+   */
+  async getPortfolioWithPrices() {
+    const currentPrices = await this.fetchCurrentPrices();
+    const tokensWithPnL = {};
+
+    for (const [mint, holding] of Object.entries(this.data.tokens)) {
+      const currentPrice = currentPrices[mint] || holding.avgPrice;
+      const currentValue = holding.amount * currentPrice;
+      const costBasis = holding.totalCost;
+      const unrealizedPnL = currentValue - costBasis;
+      const unrealizedPnLPercent = (unrealizedPnL / costBasis) * 100;
+
+      tokensWithPnL[mint] = {
+        ...holding,
+        currentPrice,
+        currentValue,
+        unrealizedPnL,
+        unrealizedPnLPercent
+      };
+    }
+
+    const totalValue = this.data.balance + Object.values(tokensWithPnL).reduce((sum, t) => sum + t.currentValue, 0);
+    const totalUnrealizedPnL = Object.values(tokensWithPnL).reduce((sum, t) => sum + t.unrealizedPnL, 0);
+
+    return {
+      balance: this.data.balance,
+      tokens: tokensWithPnL,
+      stats: this.data.stats,
+      totalValue,
+      totalUnrealizedPnL,
+      totalRealizedPnL: this.data.stats.totalProfit
+    };
   }
 
   /**

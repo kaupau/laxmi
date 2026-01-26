@@ -301,6 +301,7 @@ bot.onText(/\/help/, async (msg) => {
 *Paper Trading:*
 /mode - Toggle paper trading on/off
 /portfolio - View paper trading portfolio
+/sell - Sell tokens from portfolio
 /reset - Reset paper trading account
 
 *Wallet Commands:*
@@ -383,7 +384,7 @@ Use \`/mode\` to switch back to paper trading.`;
 });
 
 /**
- * /portfolio - View paper trading portfolio
+ * /portfolio - View paper trading portfolio with real-time prices
  */
 bot.onText(/\/portfolio/, async (msg) => {
   if (!isOwner(msg.from.id)) return;
@@ -396,23 +397,36 @@ bot.onText(/\/portfolio/, async (msg) => {
     return;
   }
 
-  const portfolio = paperTrading.getPortfolio();
-  const stats = paperTrading.getStats();
+  // Send loading message
+  const loadingMsg = await bot.sendMessage(chatId, '⏳ Fetching real-time prices...');
 
-  // Format token holdings
-  let tokensText = '_No tokens held_';
-  if (Object.keys(portfolio.tokens).length > 0) {
-    tokensText = Object.entries(portfolio.tokens)
-      .map(([mint, holding]) => {
-        const mintShort = `${mint.slice(0, 6)}...${mint.slice(-4)}`;
-        return `  • ${holding.symbol || mintShort}: ${holding.amount.toLocaleString()} tokens
-    Avg Price: $${holding.avgPrice.toFixed(8)}
-    Cost: ${holding.totalCost.toFixed(4)} SOL`;
-      })
-      .join('\n\n');
-  }
+  try {
+    // Get portfolio with current prices
+    const portfolio = await paperTrading.getPortfolioWithPrices();
+    const statsData = paperTrading.getStats();
 
-  const message = `
+    // Format token holdings with real-time data
+    let tokensText = '_No tokens held_';
+    if (Object.keys(portfolio.tokens).length > 0) {
+      tokensText = Object.entries(portfolio.tokens)
+        .map(([mint, holding]) => {
+          const mintShort = `${mint.slice(0, 6)}...${mint.slice(-4)}`;
+          const pnlSign = holding.unrealizedPnL >= 0 ? '+' : '';
+          const pnlEmoji = holding.unrealizedPnL >= 0 ? '📈' : '📉';
+
+          return `  • ${holding.symbol || mintShort}: ${holding.amount.toLocaleString()} tokens
+    Entry: $${holding.avgPrice.toFixed(8)}
+    Current: $${holding.currentPrice.toFixed(8)}
+    Value: ${holding.currentValue.toFixed(4)} SOL
+    ${pnlEmoji} P&L: ${pnlSign}${holding.unrealizedPnL.toFixed(4)} SOL (${pnlSign}${holding.unrealizedPnLPercent.toFixed(2)}%)`;
+        })
+        .join('\n\n');
+    }
+
+    const totalPnLSign = (portfolio.totalUnrealizedPnL + portfolio.totalRealizedPnL) >= 0 ? '+' : '';
+    const totalPnL = portfolio.totalUnrealizedPnL + portfolio.totalRealizedPnL;
+
+    const message = `
 📊 *Paper Trading Portfolio*
 
 💰 *SOL Balance:* ${portfolio.balance.toFixed(4)} SOL
@@ -421,17 +435,94 @@ bot.onText(/\/portfolio/, async (msg) => {
 ${tokensText}
 
 📈 *Performance:*
-• Total Value: ${portfolio.totalValue.toFixed(4)} SOL
-• Total Return: ${stats.totalReturn > 0 ? '+' : ''}${stats.totalReturn.toFixed(4)} SOL (${stats.returnPercent.toFixed(2)}%)
-• Total Trades: ${stats.totalTrades}
-• Win Rate: ${stats.winRate.toFixed(1)}%
-• Wins/Losses: ${stats.wins}/${stats.losses}
+• Current Value: ${portfolio.totalValue.toFixed(4)} SOL
+• Unrealized P&L: ${portfolio.totalUnrealizedPnL >= 0 ? '+' : ''}${portfolio.totalUnrealizedPnL.toFixed(4)} SOL
+• Realized P&L: ${portfolio.totalRealizedPnL >= 0 ? '+' : ''}${portfolio.totalRealizedPnL.toFixed(4)} SOL
+• Total P&L: ${totalPnLSign}${totalPnL.toFixed(4)} SOL (${((totalPnL / statsData.startingBalance) * 100).toFixed(2)}%)
 
+📊 *Trading Stats:*
+• Total Trades: ${statsData.totalTrades}
+• Win Rate: ${statsData.winRate.toFixed(1)}%
+• Wins/Losses: ${statsData.wins}/${statsData.losses}
+
+Use \`/sell\` to sell tokens.
 Use \`/reset\` to reset account.
 Use \`/mode\` to toggle trading mode.
-  `.trim();
+    `.trim();
 
-  bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+    // Delete loading message and send result
+    await bot.deleteMessage(chatId, loadingMsg.message_id);
+    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+
+  } catch (error) {
+    console.error('Error fetching portfolio:', error);
+    await bot.deleteMessage(chatId, loadingMsg.message_id);
+    bot.sendMessage(chatId, '❌ Error fetching real-time prices. Showing cost basis instead.\n\nTry again in a moment.', { parse_mode: 'Markdown' });
+  }
+});
+
+/**
+ * /sell - Sell tokens from portfolio
+ */
+bot.onText(/\/sell/, async (msg) => {
+  if (!isOwner(msg.from.id)) return;
+
+  stats.commandsReceived++;
+  const chatId = msg.chat.id;
+
+  if (!paperTrading.isEnabled()) {
+    bot.sendMessage(chatId, '⚠️ Paper trading is not enabled. Use `/mode` to enable it.', { parse_mode: 'Markdown' });
+    return;
+  }
+
+  try {
+    const portfolio = await paperTrading.getPortfolioWithPrices();
+
+    if (Object.keys(portfolio.tokens).length === 0) {
+      bot.sendMessage(chatId, '📭 You have no tokens to sell.\n\nUse `/portfolio` to view your holdings.', { parse_mode: 'Markdown' });
+      return;
+    }
+
+    // Create inline keyboard with sell options for each token
+    const keyboard = [];
+
+    for (const [mint, holding] of Object.entries(portfolio.tokens)) {
+      const symbol = holding.symbol || `${mint.slice(0, 6)}...${mint.slice(-4)}`;
+      const pnlSign = holding.unrealizedPnL >= 0 ? '+' : '';
+      const pnlText = `${pnlSign}${holding.unrealizedPnLPercent.toFixed(1)}%`;
+
+      // Add buttons for 25%, 50%, 100% sells
+      keyboard.push([
+        { text: `${symbol} (${pnlText})`, callback_data: `sell_info:${mint.slice(0, 12)}` }
+      ]);
+      keyboard.push([
+        { text: '  25%', callback_data: `sell:25:${mint.slice(0, 12)}` },
+        { text: '  50%', callback_data: `sell:50:${mint.slice(0, 12)}` },
+        { text: '  100%', callback_data: `sell:100:${mint.slice(0, 12)}` }
+      ]);
+    }
+
+    const message = `
+💰 *Sell Tokens*
+
+Select a token and percentage to sell:
+
+📝 *Current Holdings:*
+${Object.entries(portfolio.tokens).map(([mint, h]) => {
+  const s = h.symbol || mint.slice(0, 8);
+  return `  • ${s}: ${h.amount.toLocaleString()} (${h.unrealizedPnL >= 0 ? '+' : ''}${h.unrealizedPnLPercent.toFixed(1)}%)`;
+}).join('\n')}
+    `.trim();
+
+    bot.sendMessage(chatId, message, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: keyboard }
+    });
+
+  } catch (error) {
+    console.error('Error in /sell command:', error);
+    bot.sendMessage(chatId, '❌ Error loading portfolio. Please try again.', { parse_mode: 'Markdown' });
+  }
 });
 
 /**
@@ -1251,6 +1342,68 @@ Recommended: Start with 0.01-0.1 SOL to test.
       await bot.sendMessage(msg.chat.id, confirmMsg, {
         parse_mode: 'Markdown',
         disable_web_page_preview: true
+      });
+
+    } else if (action === 'sell') {
+      // Sell token: sell:percentage:shortMint
+      const [, percentageStr, shortMint] = parts;
+      const percentage = parseFloat(percentageStr);
+
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: `🔄 Selling ${percentage}% of position...`
+      });
+
+      try {
+        // Get current portfolio to find the full mint address
+        const portfolio = await paperTrading.getPortfolioWithPrices();
+
+        // Find the token by matching the short mint
+        const fullMint = Object.keys(portfolio.tokens).find(mint => mint.startsWith(shortMint));
+
+        if (!fullMint) {
+          await bot.sendMessage(msg.chat.id, '❌ Token not found in portfolio. Please use `/portfolio` to check your holdings.', { parse_mode: 'Markdown' });
+          return;
+        }
+
+        const holding = portfolio.tokens[fullMint];
+        const tokenAmount = (holding.amount * percentage) / 100;
+        const currentPrice = holding.currentPrice;
+
+        // Execute paper sell
+        const result = await paperTrading.sell(fullMint, tokenAmount, currentPrice);
+
+        const pnlEmoji = result.trade.profit >= 0 ? '📈' : '📉';
+        const pnlSign = result.trade.profit >= 0 ? '+' : '';
+
+        const successMsg = `
+✅ *Sell Order Executed!*
+
+*Token:* ${holding.symbol || fullMint.slice(0, 8) + '...'}
+*Amount Sold:* ${tokenAmount.toLocaleString()} tokens (${percentage}%)
+*Price:* $${currentPrice.toFixed(8)}
+*SOL Received:* ${result.trade.solReceived.toFixed(4)} SOL
+
+${pnlEmoji} *Profit/Loss:* ${pnlSign}${result.trade.profit.toFixed(4)} SOL (${pnlSign}${result.trade.profitPercent.toFixed(2)}%)
+
+📊 *Updated Portfolio:*
+• SOL Balance: ${result.portfolio.balance.toFixed(4)} SOL
+• Total Trades: ${result.portfolio.stats.totalTrades}
+• Win Rate: ${((result.portfolio.stats.wins / (result.portfolio.stats.wins + result.portfolio.stats.losses || 1)) * 100).toFixed(1)}%
+
+Use \`/portfolio\` to see full portfolio.
+        `.trim();
+
+        await bot.sendMessage(msg.chat.id, successMsg, { parse_mode: 'Markdown' });
+
+      } catch (error) {
+        console.error('❌ Sell failed:', error);
+        await bot.sendMessage(msg.chat.id, `❌ *Sell Failed*\n\n${error.message}\n\nUse \`/portfolio\` to check your holdings.`, { parse_mode: 'Markdown' });
+      }
+
+    } else if (action === 'sell_info') {
+      // Show info about a token (not implemented yet, just acknowledge)
+      await bot.answerCallbackQuery(callbackQuery.id, {
+        text: 'Select percentage below to sell'
       });
     }
 
